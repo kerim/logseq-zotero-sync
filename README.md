@@ -2,6 +2,17 @@
 
 Automatically tag Zotero items with `in_logseq` when they are referenced in Logseq pages with the #zotero tag.
 
+## Skill Installation
+
+### For Claude Code
+
+1. Clone or download this repository
+2. Copy the `skill/` folder to your Claude Code skills directory:
+   ```bash
+   cp -r skill ~/.claude/skills/logseq-zotero-sync
+   ```
+3. Restart Claude Code to load the skill
+
 ## Overview
 
 This tool syncs your Logseq knowledge base with Zotero by:
