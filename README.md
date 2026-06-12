@@ -25,9 +25,8 @@ This is **idempotent** - you can run it multiple times safely. It only tags item
 
 ## Requirements
 
-- **Logseq Desktop app** (CLI only works with desktop, not browser version)
-- **@logseq/cli** installed globally (`npm install -g @logseq/cli`)
-- Python 3.7+
+- **Logseq Desktop app** with its bundled `logseq` CLI on your PATH (ships with current Logseq.app; no npm install needed)
+- Python 3.10+
 - Zotero account with API access
 
 ## Installation
@@ -44,14 +43,16 @@ This is **idempotent** - you can run it multiple times safely. It only tags item
 
    If you've already set up zotero-tag-automation, you're done! This script uses the same keychain credentials.
 
-   If not, run the setup from zotero-tag-automation:
+   If not, run the included setup script. It stores your Library ID and API key
+   in the macOS Keychain and then makes one read-only call to Zotero to confirm
+   the key works (and warns if it lacks the write access the sync needs):
    ```bash
-   python /Users/niyaro/.claude/skills/zotero-tag-automation/setup_credentials.py
+   python setup_credentials.py
    ```
 
    You'll need:
    - Your Zotero Library ID (find at https://www.zotero.org/settings/keys)
-   - Your Zotero API Key (create at https://www.zotero.org/settings/keys/new)
+   - Your Zotero API Key (create at https://www.zotero.org/settings/keys/new, with "Allow write access")
 
 ## Usage
 
@@ -108,7 +109,7 @@ Summary:
 
 ## How It Works
 
-1. **Logseq Query**: Uses `logseq query` CLI command to find all pages with the Zotero URL property
+1. **Logseq Query**: Uses `logseq query --graph "NAME" --query 'EDN' --output json` CLI command to find all pages with the Zotero URL property
 2. **Extract Keys**: Parses the output to extract Zotero item keys (e.g., "M2QGSQA9")
 3. **Batch Check**: Queries Zotero API for all items already tagged with `in_logseq`
 4. **Diff**: Compares the two lists to find items that need tagging
@@ -131,15 +132,16 @@ To view/manage:
 
 **"Graph not found"**
 - Make sure you're using Logseq Desktop app (not browser)
-- Run `logseq list` to see available graphs
+- Run `logseq graph list --output json` to see available graphs
 - Specify the exact graph name as shown in the list
 
-**"Credentials not found"**
-- Run the setup_credentials.py script
-- Check Keychain Access.app for the credentials
+**"Credentials not found"** (or Zotero returns `403 Invalid key`)
+- Run `python setup_credentials.py` to store (or replace) your Library ID and API key
+- A `403 Invalid key` from Zotero means the stored key was revoked/regenerated — create a new one and re-run the setup script
+- Check Keychain Access.app (search "zotero-tag-automation") for the stored credentials
 
 **"Command not found: logseq"**
-- Install @logseq/cli: `npm install -g @logseq/cli`
+- Make sure Logseq Desktop app is installed — the bundled `logseq` CLI ships with current Logseq.app
 - Verify: `logseq --version`
 
 ## Related Tools

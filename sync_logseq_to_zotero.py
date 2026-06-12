@@ -2,6 +2,7 @@
 """
 Sync Logseq pages with #zotero tag to Zotero by adding 'in_logseq' tag.
 Uses batch checking to efficiently tag only items that need it.
+Targets the Logseq.app-bundled `logseq` CLI (no npm install needed).
 
 Usage:
     python sync_logseq_to_zotero.py [GRAPH_NAME]
@@ -15,11 +16,53 @@ If no graph name is provided, it will attempt to auto-detect.
 import sys
 import subprocess
 import re
+import json
 import keyring
 from pyzotero import zotero
 
+__version__ = "1.1.0"
+
 SERVICE_NAME = "zotero-tag-automation"  # Share credentials with zotero-tag-automation
 TAG_NAME = "in_logseq"
+
+
+def run_logseq_json(args):
+    """
+    Run a logseq CLI command and return parsed JSON output.
+
+    args: list of CLI arguments after 'logseq' (e.g. ['graph', 'list', '--output', 'json'])
+
+    Returns (data_dict, raw_stdout) where data_dict is the parsed JSON.
+    Raises RuntimeError if the output is not valid JSON or status != 'ok'.
+    stderr is ignored entirely (Electron codesign noise on every call).
+    """
+    result = subprocess.run(['logseq'] + args, capture_output=True, text=True)
+
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        raise RuntimeError(
+            f"Logseq CLI returned non-JSON output: {result.stdout[:500]}"
+        )
+
+    if data.get('status') != 'ok':
+        raise RuntimeError(f"Logseq CLI error: {data}")
+
+    return data, result.stdout
+
+
+def detect_graph():
+    """
+    Auto-detect the first available Logseq graph.
+    Returns the graph name string.
+    Raises RuntimeError if no graphs are found.
+    """
+    data, _ = run_logseq_json(['graph', 'list', '--output', 'json'])
+    graphs = data.get('data', {}).get('graphs')
+    if not graphs:
+        raise RuntimeError("No Logseq graphs found")
+    return graphs[0]
+
 
 def get_credentials():
     """Retrieve credentials from macOS Keychain"""
@@ -46,28 +89,19 @@ def get_logseq_zotero_items(graph_name):
     # Run logseq query to get Zotero URLs
     query = '[:find (pull ?b [:block/title {:user.property/ZoteroURL-om1JHnZv [:block/title]}]) :where [?b :user.property/ZoteroURL-om1JHnZv]]'
 
-    try:
-        result = subprocess.run(
-            ['logseq', 'query', graph_name, query],
-            capture_output=True,
-            text=True,
-            check=True
-        )
+    data, raw = run_logseq_json(
+        ['query', '--graph', graph_name, '--query', query, '--output', 'json']
+    )
 
-        # Extract item keys from URLs
-        # Format: zotero://select/library/items/XXXXXXXX
-        pattern = r'zotero://select/library/items/([A-Z0-9]+)'
-        matches = re.findall(pattern, result.stdout)
+    # Extract item keys from URLs in the raw stdout
+    # Format: zotero://select/library/items/XXXXXXXX
+    pattern = r'zotero://select/library/items/([A-Z0-9]+)'
+    matches = re.findall(pattern, raw)
 
-        item_keys = set(matches)
-        print(f"Found {len(item_keys)} items in Logseq with Zotero URLs")
+    item_keys = set(matches)
+    print(f"Found {len(item_keys)} items in Logseq with Zotero URLs")
 
-        return item_keys
-
-    except subprocess.CalledProcessError as e:
-        print(f"✗ Error querying Logseq: {e}")
-        print(f"stderr: {e.stderr}")
-        sys.exit(1)
+    return item_keys
 
 def get_tagged_items(zot):
     """
@@ -146,25 +180,18 @@ def tag_items(zot, item_keys):
 
 def main():
     # Get graph name from arguments or use default
-    if len(sys.argv) > 1:
+    graph_specified_by_user = len(sys.argv) > 1
+    if graph_specified_by_user:
         graph_name = sys.argv[1]
     else:
         # Try to auto-detect most recent graph
         try:
-            result = subprocess.run(['logseq', 'list'], capture_output=True, text=True, check=True)
-            # Parse output to find first DB graph
-            lines = result.stdout.strip().split('\n')
-            for i, line in enumerate(lines):
-                if 'DB Graphs:' in line and i + 1 < len(lines):
-                    graph_name = lines[i + 1].strip()
-                    break
-            else:
-                print("✗ Error: Could not auto-detect graph. Please provide graph name.")
-                print()
-                print("Usage: python sync_logseq_to_zotero.py [GRAPH_NAME]")
-                sys.exit(1)
-        except Exception as e:
+            graph_name = detect_graph()
+            print(f"Auto-detected graph: {graph_name}")
+        except RuntimeError as e:
             print(f"✗ Error listing Logseq graphs: {e}")
+            print()
+            print("Usage: python sync_logseq_to_zotero.py [GRAPH_NAME]")
             sys.exit(1)
 
     print("=" * 60)
@@ -179,7 +206,17 @@ def main():
     zot = zotero.Zotero(library_id, 'user', api_key)
 
     # Get items from Logseq
-    logseq_items = get_logseq_zotero_items(graph_name)
+    try:
+        logseq_items = get_logseq_zotero_items(graph_name)
+    except RuntimeError as e:
+        print(f"✗ Error querying Logseq: {e}")
+        sys.exit(1)
+
+    # Zero-result safety guard for auto-detected graphs
+    if not graph_specified_by_user and len(logseq_items) == 0:
+        print(f"Auto-detected graph '{graph_name}' has no Zotero URLs.")
+        print(f"Specify the correct graph: python sync_logseq_to_zotero.py \"GRAPH NAME\"")
+        sys.exit(1)
 
     # Get items already tagged in Zotero
     tagged_items = get_tagged_items(zot)

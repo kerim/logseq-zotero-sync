@@ -1,5 +1,6 @@
 ---
 name: logseq-zotero-sync
+version: 1.1.0
 description: Sync Logseq pages tagged with #zotero to Zotero by adding 'in_logseq' tag. Uses batch checking for efficiency. Claude Code only.
 ---
 
@@ -32,9 +33,8 @@ This skill syncs Logseq pages tagged with #zotero to Zotero by:
 ## Requirements
 
 ### System Requirements
-- **Logseq Desktop app** (CLI doesn't work with browser version)
-- **@logseq/cli** installed globally (`npm install -g @logseq/cli`)
-- Python 3.7+
+- **Logseq Desktop app** with its bundled `logseq` CLI on your PATH (ships with current Logseq.app; no npm install needed)
+- Python 3.10+
 - macOS (for Keychain credential storage)
 
 ### Python Dependencies
@@ -45,9 +45,11 @@ pip3 install pyzotero keyring
 ### Credentials
 Shares credentials with `zotero-tag-automation` skill via macOS Keychain (service: `zotero-tag-automation`).
 
-If credentials aren't set up yet:
+If credentials aren't set up yet (or Zotero returns `403 Invalid key`), run the
+included setup script. It stores the Library ID and API key in the Keychain and
+verifies the key against Zotero (warning if it lacks write access):
 ```bash
-python /Users/niyaro/.claude/skills/zotero-tag-automation/setup_credentials.py
+python setup_credentials.py
 ```
 
 ## Usage
@@ -82,7 +84,14 @@ This is much more efficient than checking each item one-by-one, especially as th
 
 ### Logseq CLI Query
 
-The script runs this datalog query via Logseq CLI:
+The script uses the Logseq.app-bundled CLI with these commands:
+
+- **Graph listing**: `logseq graph list --output json`
+- **Query**: `logseq query --graph "NAME" --query 'EDN' --output json`
+
+The CLI always exits 0 (even on error), so the script checks the JSON `status` field (must equal `"ok"`). A harmless Electron codesign line is printed to stderr on every call — the script ignores stderr entirely and only parses stdout.
+
+The datalog query used:
 
 ```clojure
 [:find (pull ?b [:block/title {:user.property/ZoteroURL-om1JHnZv [:block/title]}])
@@ -178,25 +187,23 @@ Summary:
 **Problem**: Logseq CLI can't find the graph
 **Solutions**:
 - User is using browser version (CLI only works with Desktop)
-- Run `logseq list` to see available graphs
+- Run `logseq graph list --output json` to see available graphs
 - Make sure Logseq Desktop app is installed
 
-### "Credentials not found"
+### "Credentials not found" or `403 Invalid key`
 
-**Problem**: No credentials in Keychain
-**Solution**: Run setup script:
+**Problem**: No credentials in Keychain, or the stored API key was revoked/regenerated (Zotero returns `403 Invalid key`)
+**Solution**: Run the setup script to store or replace the credentials (it also verifies the key against Zotero):
 ```bash
-python /Users/niyaro/.claude/skills/zotero-tag-automation/setup_credentials.py
+python setup_credentials.py
 ```
 
 ### "Command not found: logseq"
 
-**Problem**: @logseq/cli not installed
+**Problem**: Logseq Desktop app not installed or `logseq` CLI not on PATH
 **Solution**:
-```bash
-npm install -g @logseq/cli
-logseq --version  # verify
-```
+- Install Logseq Desktop app — the bundled `logseq` CLI ships with current Logseq.app
+- Verify: `logseq --version`
 
 ### Empty Results from Logseq
 
