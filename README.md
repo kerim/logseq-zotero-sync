@@ -31,11 +31,14 @@ This is **idempotent** - you can run it multiple times safely. It only tags item
 
 ## Installation
 
-1. Clone or download this repository to `/Users/niyaro/Documents/Code/logseq-zotero-sync/`
+1. Clone this repository and `cd` into it:
+   ```bash
+   git clone https://github.com/kerim/logseq-zotero-sync.git
+   cd logseq-zotero-sync
+   ```
 
 2. Install Python dependencies:
    ```bash
-   cd /Users/niyaro/Documents/Code/logseq-zotero-sync
    pip3 install -r requirements.txt
    ```
 
@@ -148,6 +151,10 @@ To view/manage:
 
 - **zotero-tag-automation**: Tag Zotero items after search results
 - **logseq-cli skill**: Interface with Logseq from Claude Code
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md). Current version: **1.1.0**.
 
 ## License
 
